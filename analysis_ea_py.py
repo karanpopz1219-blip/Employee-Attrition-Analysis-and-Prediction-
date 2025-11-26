@@ -11,6 +11,7 @@ from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_s
                              confusion_matrix, roc_curve, classification_report, mean_squared_error, r2_score)
 from sklearn.utils import class_weight
 import io
+import pickle
 
 # Set Streamlit Page Config
 st.set_page_config(page_title="HR Analytics Dashboard", layout="wide", page_icon="📊")
@@ -33,6 +34,11 @@ st.markdown("""
     }
     .stButton>button {
         width: 100%;
+    }
+    .slide-header {
+        color: #0f766e;
+        font-weight: bold;
+        margin-top: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -103,6 +109,82 @@ def get_feature_matrix(df, target_col):
 
 # --- 2. MODEL TRAINING FUNCTIONS ---
 
+# Centralized Training for Deliverables
+@st.cache_resource
+def train_all_models_for_export(df):
+    """
+    Trains all models once to generate deliverables (Pickle files, Metrics Report).
+    Returns: models_dict, metrics_string
+    """
+    df_clean = preprocess_data(df)
+    
+    # --- 1. Attrition Model (RF) ---
+    X_att, y_att = get_feature_matrix(df_clean, 'Attrition')
+    X_train_att, X_test_att, y_train_att, y_test_att = train_test_split(X_att, y_att, test_size=0.2, random_state=42, stratify=y_att)
+    
+    model_att = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42)
+    model_att.fit(X_train_att, y_train_att)
+    y_pred_att = model_att.predict(X_test_att)
+    
+    att_metrics = f"""
+    [Attrition Prediction - Random Forest]
+    Accuracy: {accuracy_score(y_test_att, y_pred_att):.4f}
+    Precision: {precision_score(y_test_att, y_pred_att):.4f}
+    Recall: {recall_score(y_test_att, y_pred_att):.4f}
+    F1-Score: {f1_score(y_test_att, y_pred_att):.4f}
+    """
+
+    # --- 2. Performance Model (RF) ---
+    # Remove Attrition from features
+    df_perf = df_clean.drop(columns=['Attrition']) if 'Attrition' in df_clean.columns else df_clean
+    X_perf, y_perf = get_feature_matrix(df_perf, 'PerformanceRating')
+    X_train_perf, X_test_perf, y_train_perf, y_test_perf = train_test_split(X_perf, y_perf, test_size=0.2, random_state=42, stratify=y_perf)
+    
+    model_perf = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42)
+    model_perf.fit(X_train_perf, y_train_perf)
+    y_pred_perf = model_perf.predict(X_test_perf)
+    
+    perf_metrics = f"""
+    [Performance Rating Prediction]
+    Accuracy: {accuracy_score(y_test_perf, y_pred_perf):.4f}
+    F1-Score (Weighted): {f1_score(y_test_perf, y_pred_perf, average='weighted'):.4f}
+    """
+
+    # --- 3. Promotion Model (Regressor) ---
+    df_promo = df_clean.drop(columns=['Attrition']) if 'Attrition' in df_clean.columns else df_clean
+    X_promo, y_promo = get_feature_matrix(df_promo, 'YearsSinceLastPromotion')
+    X_train_promo, X_test_promo, y_train_promo, y_test_promo = train_test_split(X_promo, y_promo, test_size=0.2, random_state=42)
+    
+    model_promo = RandomForestRegressor(n_estimators=100, random_state=42)
+    model_promo.fit(X_train_promo, y_train_promo)
+    y_pred_promo = model_promo.predict(X_test_promo)
+    
+    promo_metrics = f"""
+    [Promotion Likelihood - Regression]
+    RMSE: {np.sqrt(mean_squared_error(y_test_promo, y_pred_promo)):.4f}
+    R2 Score: {r2_score(y_test_promo, y_pred_promo):.4f}
+    """
+    
+    full_report = f"""
+    PROJECT EVALUATION REPORT
+    =========================
+    {att_metrics}
+    -------------------------
+    {perf_metrics}
+    -------------------------
+    {promo_metrics}
+    =========================
+    """
+    
+    models = {
+        'attrition_model': model_att,
+        'performance_model': model_perf,
+        'promotion_model': model_promo,
+        'feature_columns_attrition': X_att.columns.tolist()
+    }
+    
+    return models, full_report
+
 def train_attrition_model(X_train, y_train, model_type="Random Forest"):
     if model_type == "Logistic Regression":
         model = LogisticRegression(class_weight='balanced', max_iter=1000)
@@ -127,43 +209,143 @@ def train_promotion_model(X_train, y_train):
 # --- MAIN APP STRUCTURE ---
 
 def main():
-    st.markdown("<h1 class='main-header'>🏢 HR Analytics: Attrition, Performance & Promotion </h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>🏢 HR Analytics: Attrition, Performance & Promotion AI</h1>", unsafe_allow_html=True)
     
     # Load Data
     raw_df = load_data()
     if raw_df is None:
         return
+        
+    # Preprocess once for global use
+    df_clean = preprocess_data(raw_df)
+
+    # Train global models for download artifacts
+    export_models, export_report = train_all_models_for_export(raw_df)
 
     # Tabs for different sections
-    tab1, tab2, tab3, tab4 = st.tabs(["📄 Project Report", "📊 Exploratory Data Analysis", "🤖 Predictions (ML)", "🔮 Interactive Tool"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📄 Project Presentation", "📊 Exploratory Data Analysis", "🤖 Predictions (ML)", "🔮 Interactive Tool"])
 
-    # --- TAB 1: PROJECT REPORT ---
+    # --- TAB 1: PROJECT PRESENTATION (UPDATED WITH SLIDE CONTENT) ---
     with tab1:
-        st.header("Project Documentation & Deliverables")
+        st.header("Project Presentation & Deliverables")
         
-        st.subheader("1. Problem Statement")
-        st.write("""
-        Employee turnover poses a significant challenge for organizations. This project analyzes employee data 
-        to identify key drivers of attrition and builds predictive models to support proactive retention strategies.
-        """)
+        col_doc, col_dl = st.columns([2.5, 1])
         
-        st.subheader("2. Approach")
-        st.markdown("""
-        * **Data Collection**: Used the Employee Attrition dataset.
-        * **Preprocessing**: Removed constant columns (`EmployeeCount`, `Over18`), encoded binary variables (`Attrition`, `OverTime`), and applied One-Hot Encoding for categorical features.
-        * **EDA**: Analyzed correlations and distributions to find high-risk groups.
-        * **Modeling**: 
-            * *Task 1*: **Attrition Prediction** (Binary Classification) using Random Forest/Logistic Regression.
-            * *Task 2*: **Performance Rating Prediction** (Classification) using Random Forest.
-            * *Task 3*: **Promotion Likelihood** (Regression) predicting Years Since Last Promotion.
-        * **Evaluation**: Used Accuracy, Precision, Recall, F1-Score, AUC-ROC (Classification) and MSE/R2 (Regression).
-        """)
-        
-        st.subheader("3. Key Deliverables")
-        st.success("✅ Source Code (This Streamlit App)")
-        st.success("✅ Cleaned Data (Processed in real-time)")
-        st.success("✅ Trained Models (Random Forest, Logistic Regression)")
-        st.success("✅ Visualizations & Dashboard")
+        with col_doc:
+            # SLIDE 1: TITLE
+            st.markdown("### 1. Employee Attrition Analysis & Prediction")
+            st.info("**Subtitle:** A Data-Driven Approach to HR Analytics using Machine Learning & Streamlit  \n**Goal:** Transforming Workforce Data into Retention Strategies")
+            
+            st.divider()
+            
+            # SLIDE 2: THE COST
+            st.markdown("### 2. The Silent Profit Killer: Cost of Turnover")
+            st.write("Employee attrition is not just an HR headache; it's a massive financial drain. High turnover disrupts teams, lowers morale, and incurs significant replacement costs.")
+            c1, c2, c3 = st.columns(3)
+            c1.error("Recruitment fees")
+            c2.error("Onboarding time")
+            c3.error("Lost productivity")
+            st.write("**Key Statistics:**")
+            st.write("- **200%:** Cost to Replace Senior Staff (of Annual Salary)")
+            st.write("- **$1T:** Annual Cost to U.S. Businesses")
+            
+            st.divider()
+            
+            # SLIDE 3: SOLUTION
+            st.markdown("### 3. End-to-End HR Analytics Solution")
+            st.write("We developed this comprehensive **Streamlit Application** that empowers HR teams to move from reactive to proactive management.")
+            st.success("📊 **Interactive Dashboard:** Real-time data exploration.")
+            st.success("🧠 **Predictive Engines:** 3 ML models for Risk, Performance, and Promotion.")
+            st.success("⚡ **Actionable Insights:** Instant risk alerts and career tracking.")
+            
+            st.divider()
+
+            # SLIDE 4: DATA PIPELINE
+            st.markdown("### 4. Data Pipeline & Engineering")
+            st.write("* **Raw Data:** `Employee-Attrition.csv` (1,470 Records, 35 Features).")
+            st.write("* **Preprocessing:** Removed ID columns, Binary Encoding for 'Attrition'/'OverTime', One-Hot Encoding for categorical variables.")
+            st.write("* **Feature Engineering:** Created `CareerMaturity` metric (*TotalWorkingYears / Age*) to identify experience density.")
+
+            st.divider()
+
+            # SLIDE 5: EDA INSIGHTS
+            st.markdown("### 5. Key Insights (EDA)")
+            st.write("Our exploratory analysis uncovered critical correlation patterns:")
+            st.warning("👉 **OverTime:** The single biggest predictor. Employees working overtime are **3x** more likely to leave.")
+            st.warning("👉 **Income:** Strong inverse correlation. Lower income brackets have significantly higher turnover.")
+            st.warning("👉 **Role Risk:** Sales Representatives & Lab Technicians face the highest churn rates (~24-40%).")
+
+            st.divider()
+
+            # SLIDE 6: ML STRATEGY
+            st.markdown("### 6. 3-Pronged Machine Learning Strategy")
+            st.markdown("""
+            | Task | Type | Goal | Model |
+            | :--- | :--- | :--- | :--- |
+            | **1. Attrition** | Classification | Predict 'Yes/No' for leaving | Random Forest |
+            | **2. Performance** | Classification | Predict Rating (3 vs 4) | Random Forest |
+            | **3. Promotion** | Regression | Forecast 'Years Since Last Promo' | Random Forest Regressor |
+            """)
+
+            st.divider()
+
+            # SLIDE 7: RESULTS
+            st.markdown("### 7. Task 1 Results (Attrition)")
+            st.write("We prioritized **Recall** to minimize 'False Negatives' (missing an at-risk employee is costly).")
+            col_res1, col_res2, col_res3 = st.columns(3)
+            col_res1.metric("Accuracy", "77%")
+            col_res2.metric("AUC-ROC", "0.82")
+            col_res3.metric("Recall", "69%")
+            st.caption("The model effectively discriminates between stayers and leavers, allowing HR to intervene early.")
+
+            st.divider()
+            
+            # SLIDE 11: CONCLUSION
+            st.markdown("### 8. Strategic Business Impact")
+            st.write("By moving from intuition to data-driven insights, the organization can achieve:")
+            st.success("✅ **Proactive Retention:** Identify flight risks before they resign.")
+            st.success("✅ **Cost Optimization:** Save millions in replacement costs.")
+            st.success("✅ **Fairness:** Data-backed promotion cycles.")
+
+            st.divider()
+
+            # SLIDE 9: FINAL RECOMMENDATIONS
+            st.markdown("### 9. Final Recommendations")
+            st.markdown("Based on our predictive models and analysis, we propose the following actions:")
+            
+            st.warning("⚠️ **Monitor Overtime:** Overtime is a critical driver. Ensure work-life balance to reduce burnout.")
+            st.info("😊 **Improve Job Satisfaction:** Target engagement initiatives towards high-performing employees who currently report low satisfaction.")
+            st.info("💰 **Align Compensation:** Review salaries against industry standards to mitigate income-driven attrition.")
+            st.info("📈 **Growth & Promotions:** Promoting high-performance employees is a dual-win: it prevents attrition and significantly improves job satisfaction.")
+            st.success("🔮 **Leverage Analytics:** Use this predictive tool proactively to identify at-risk talent before they decide to leave.")
+
+        with col_dl:
+            st.metric_box = st.container()
+            with st.metric_box:
+                st.subheader("📂 Download Deliverables")
+                st.info("Download the project artifacts directly below.")
+                
+                # 1. Source Code
+                try:
+                    with open(__file__, "r") as f:
+                        source_code = f.read()
+                    st.download_button("📥 Source Code (app.py)", source_code, "app.py", "text/x-python")
+                except Exception as e:
+                    st.warning(f"Could not read source file: {e}")
+
+                # 2. Cleaned Data
+                csv_data = df_clean.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Cleaned Data (CSV)", csv_data, "cleaned_employee_data.csv", "text/csv")
+                
+                # 3. Model Files (Pickle)
+                # Serialize the models dictionary
+                model_buffer = io.BytesIO()
+                pickle.dump(export_models, model_buffer)
+                model_buffer.seek(0)
+                st.download_button("📥 Trained Models (.pkl)", model_buffer, "project_models.pkl", "application/octet-stream")
+                
+                # 4. Documentation / Metrics Report
+                st.download_button("📥 Project Report (.txt)", export_report, "project_evaluation_report.txt", "text/plain")
 
     # --- TAB 2: EDA ---
     with tab2:
@@ -220,8 +402,7 @@ def main():
     with tab3:
         st.header("Machine Learning Model Results")
         
-        # Process Data
-        df_clean = preprocess_data(raw_df)
+        # Process Data (Locally for this tab to allow interactivity)
         
         # --- TASK 1: ATTRITION PREDICTION ---
         st.subheader("Task 1: Predicting Employee Attrition (Classification)")
