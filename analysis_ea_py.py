@@ -209,7 +209,7 @@ def train_promotion_model(X_train, y_train):
 # --- MAIN APP STRUCTURE ---
 
 def main():
-    st.markdown("<h1 class='main-header'>🏢 HR Analytics: Attrition, Performance & Promotion AI</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>🏢 HR Analytics: Attrition, Performance & Promotion </h1>", unsafe_allow_html=True)
     
     # Load Data
     raw_df = load_data()
@@ -238,16 +238,22 @@ def main():
             
             st.divider()
             
-            # SLIDE 2: THE COST
+            # SLIDE 2: THE COST (UPDATED)
             st.markdown("### 2. The Silent Profit Killer: Cost of Turnover")
             st.write("Employee attrition is not just an HR headache; it's a massive financial drain. High turnover disrupts teams, lowers morale, and incurs significant replacement costs.")
+            
             c1, c2, c3 = st.columns(3)
-            c1.error("Recruitment fees")
-            c2.error("Onboarding time")
-            c3.error("Lost productivity")
-            st.write("**Key Statistics:**")
-            st.write("- **200%:** Cost to Replace Senior Staff (of Annual Salary)")
-            st.write("- **$1T:** Annual Cost to U.S. Businesses")
+            c1.warning("💸 Recruitment fees")
+            c2.warning("⏳ Onboarding time")
+            c3.warning("📉 Lost productivity")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Key stats with metrics for impact
+            st.markdown("**Key Statistics:**")
+            stat1, stat2 = st.columns(2)
+            stat1.metric(label="Cost to Replace Senior Staff", value="200%", delta="of Annual Salary", delta_color="inverse")
+            stat2.metric(label="Annual Cost to U.S. Businesses", value="$1T", delta="Economic Impact", delta_color="inverse")
             
             st.divider()
             
@@ -298,9 +304,73 @@ def main():
             col_res3.metric("Recall", "69%")
             st.caption("The model effectively discriminates between stayers and leavers, allowing HR to intervene early.")
 
+            st.markdown("#### ⚡ Live Model Demo")
+            st.write("Select a profile below to test the Attrition Model in real-time:")
+            
+            demo_c1, demo_c2 = st.columns(2)
+            
+            # --- LIVE DEMO LOGIC ---
+            with demo_c1:
+                if st.button("🧪 Simulate: High Risk Profile"):
+                    # Create a dummy high risk profile
+                    demo_data = {
+                        'OverTime': 'Yes', 'MonthlyIncome': 2500, 'JobRole': 'Sales Representative',
+                        'Age': 25, 'TotalWorkingYears': 2, 'YearsAtCompany': 1, 'JobSatisfaction': 1,
+                        'EnvironmentSatisfaction': 1, 'JobInvolvement': 1, 'WorkLifeBalance': 1,
+                        'DailyRate': 500, 'DistanceFromHome': 20, 'Education': 1, 'JobLevel': 1,
+                        'NumCompaniesWorked': 5, 'PercentSalaryHike': 10, 'PerformanceRating': 3,
+                        'RelationshipSatisfaction': 1, 'StockOptionLevel': 0, 'TrainingTimesLastYear': 0,
+                        'YearsInCurrentRole': 0, 'YearsSinceLastPromotion': 0, 'YearsWithCurrManager': 0,
+                         'Gender': 'Male', 'MaritalStatus': 'Single', 'Department': 'Sales', 
+                         'BusinessTravel': 'Travel_Frequently', 'EducationField': 'Marketing'
+                    }
+                    demo_df = pd.DataFrame([demo_data])
+                    
+                    # Process
+                    demo_clean = preprocess_data(demo_df)
+                    demo_enc = pd.get_dummies(demo_clean)
+                    # Align cols
+                    for c in export_models['feature_columns_attrition']:
+                        if c not in demo_enc.columns: demo_enc[c] = 0
+                    demo_final = demo_enc[export_models['feature_columns_attrition']]
+                    
+                    # Predict
+                    prob = export_models['attrition_model'].predict_proba(demo_final)[0][1]
+                    st.error(f"🔴 Prediction: HIGH RISK (Probability: {prob:.1%})")
+                    st.write("*Factors: OverTime=Yes, Low Income, Sales Rep*")
+
+            with demo_c2:
+                if st.button("🛡️ Simulate: Low Risk Profile"):
+                    # Create a dummy low risk profile
+                    demo_data_safe = {
+                        'OverTime': 'No', 'MonthlyIncome': 15000, 'JobRole': 'Manager',
+                        'Age': 45, 'TotalWorkingYears': 20, 'YearsAtCompany': 15, 'JobSatisfaction': 4,
+                        'EnvironmentSatisfaction': 4, 'JobInvolvement': 4, 'WorkLifeBalance': 3,
+                        'DailyRate': 1200, 'DistanceFromHome': 5, 'Education': 4, 'JobLevel': 4,
+                        'NumCompaniesWorked': 1, 'PercentSalaryHike': 15, 'PerformanceRating': 4,
+                        'RelationshipSatisfaction': 4, 'StockOptionLevel': 2, 'TrainingTimesLastYear': 3,
+                        'YearsInCurrentRole': 10, 'YearsSinceLastPromotion': 5, 'YearsWithCurrManager': 8,
+                         'Gender': 'Female', 'MaritalStatus': 'Married', 'Department': 'R&D', 
+                         'BusinessTravel': 'Travel_Rarely', 'EducationField': 'Life Sciences'
+                    }
+                    demo_df_safe = pd.DataFrame([demo_data_safe])
+                    
+                    # Process
+                    demo_clean_s = preprocess_data(demo_df_safe)
+                    demo_enc_s = pd.get_dummies(demo_clean_s)
+                    # Align cols
+                    for c in export_models['feature_columns_attrition']:
+                        if c not in demo_enc_s.columns: demo_enc_s[c] = 0
+                    demo_final_s = demo_enc_s[export_models['feature_columns_attrition']]
+                    
+                    # Predict
+                    prob_s = export_models['attrition_model'].predict_proba(demo_final_s)[0][1]
+                    st.success(f"🟢 Prediction: STABLE (Probability: {prob_s:.1%})")
+                    st.write("*Factors: No OverTime, High Income, Manager*")
+
             st.divider()
             
-            # SLIDE 11: CONCLUSION
+            # SLIDE 8: IMPACT
             st.markdown("### 8. Strategic Business Impact")
             st.write("By moving from intuition to data-driven insights, the organization can achieve:")
             st.success("✅ **Proactive Retention:** Identify flight risks before they resign.")
@@ -397,6 +467,28 @@ def main():
                 # Numerical plot (Boxplot)
                 sns.boxplot(x='Attrition', y=factor, data=df_display, palette='Set2', ax=ax_bi)
             st.pyplot(fig_bi)
+
+        st.divider()
+        
+        # Outlier Analysis Section
+        st.subheader("Outlier Analysis")
+        st.write("Visualizing outliers in numerical features using Boxplots.")
+        
+        # Select numeric columns available in raw data
+        # Note: raw_df has constant columns, but df_display is raw_df.copy().
+        # We can list interesting ones manually or filter.
+        outlier_options = ['MonthlyIncome', 'YearsAtCompany', 'TotalWorkingYears', 'Age', 'DailyRate', 'DistanceFromHome', 'YearsInCurrentRole']
+        outlier_col = st.selectbox("Select Feature for Outlier Detection:", outlier_options)
+        
+        if outlier_col in df_display.columns:
+            fig_out, ax_out = plt.subplots(figsize=(10, 4))
+            sns.boxplot(x=df_display[outlier_col], color='orange', ax=ax_out)
+            ax_out.set_title(f"Boxplot of {outlier_col}")
+            st.pyplot(fig_out)
+            
+            # Explanation about why we kept them
+            st.info("ℹ️ **Note on Outliers:** In this HR dataset, 'outliers' often represent senior leadership (High Income, Long Tenure). We deliberately kept them to ensure the model learns to predict attrition for senior management as well.")
+
 
     # --- TAB 3: MODEL TRAINING & RESULTS ---
     with tab3:
